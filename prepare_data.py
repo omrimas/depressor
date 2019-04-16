@@ -118,22 +118,26 @@ def build_sim_words_dict(voc, weights_matrix):
     return index2sim
 
 
-def build_training_data(voc, weights_matrix):
-    src = []
-    sim_src = []
+def build_training_data(voc, sim_words):
+    input, target = [], []
+    prev_word = ""
+
     with open(FIXED_TRAINING, 'r') as f:
         for idx, line in enumerate(f):
-            if (idx % 10 == 0) and (idx > 0):
+            if (idx % 500 == 0) and (idx > 0):
                 print("Finished %s lines" % idx)
 
             words = line.split()
-            if len(words) > 1:
-                reg_sentence = [voc.word2index[w] for w in words]
-                sim_reg_sentence = [get_sim_words_indices(w, weights_matrix) for w in words]
-                src += reg_sentence
-                sim_src += sim_reg_sentence
+            for i, w in enumerate(words):
+                if prev_word == "":
+                    prev_word = w
+                    continue
 
-        return src, sim_src
+                input.append((voc.word2index[prev_word], sim_words[voc.word2index[w]]))
+                target.append(voc.word2index[w])
+                prev_word = w
+
+        return input, target
 
 
 # build vocs
@@ -169,28 +173,27 @@ def build_training_data(voc, weights_matrix):
 # pickle.dump(weights_matrix, f_matrix, protocol=4)
 # f_matrix.close()
 
-# build similar words dictionary
-f_vocs = open(VOCS_PICKLE, "rb")
-voc = pickle.load(f_vocs)
-glove_matrix_pickle = os.path.join("pickles", LABEL + "_" + "glove_matrices.pkl")
-f_glove = open(glove_matrix_pickle, "rb")
-weights_matrix = pickle.load(f_glove)
-sim_words = build_sim_words_dict(voc, weights_matrix)
-f_similar_pickle = os.path.join("pickles", LABEL + "_" + "similar_dict.pkl")
-f_similar = open(f_similar_pickle, "wb")
-pickle.dump(sim_words, f_similar)
-f_similar.close()
+# # build similar words dictionary
+# f_vocs = open(VOCS_PICKLE, "rb")
+# voc = pickle.load(f_vocs)
+# glove_matrix_pickle = os.path.join("pickles", LABEL + "_" + "glove_matrices.pkl")
+# f_glove = open(glove_matrix_pickle, "rb")
+# weights_matrix = pickle.load(f_glove)
+# sim_words = build_sim_words_dict(voc, weights_matrix)
+# f_similar_pickle = os.path.join("pickles", LABEL + "_" + "similar_dict.pkl")
+# f_similar = open(f_similar_pickle, "wb")
+# pickle.dump(sim_words, f_similar)
+# f_similar.close()
 
 
 # # build training data
-# f_vocs = open(VOCS_PICKLE, "rb")
-# voc = pickle.load(f_vocs)
-# label = "depression"
-# print("Building training data for " + label)
-# glove_matrix_pickle = os.path.join("pickles", label + "_" + "glove_matrices.pkl")
-# f_glove = open(glove_matrix_pickle, "rb")
-# weights_matrix = pickle.load(f_glove)
-# training_data = build_training_data(voc, weights_matrix)
-# training_data_pickle = os.path.join("pickles", label + "_" + "training_data")
-# f_train = open(training_data_pickle, "wb")
-# pickle.dump(training_data, f_train, protocol=4)
+f_vocs = open(VOCS_PICKLE, "rb")
+voc = pickle.load(f_vocs)
+f_similar_pickle = os.path.join("pickles", LABEL + "_" + "similar_dict.pkl")
+f_similar = open(f_similar_pickle, "rb")
+sim_words = pickle.load(f_similar)
+print("Building training data for " + LABEL)
+training_data = build_training_data(voc, sim_words)
+training_data_pickle = os.path.join("pickles", LABEL + "_" + "training_data")
+f_train = open(training_data_pickle, "wb")
+pickle.dump(training_data, f_train, protocol=4)
