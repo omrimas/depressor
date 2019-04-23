@@ -1,8 +1,3 @@
-import re
-import os
-import unicodedata
-import torch
-
 EOS_TOKEN = 0  # End-of-sentence token
 
 

@@ -4,16 +4,17 @@ from torch.autograd import Variable
 
 
 class LSTMGenerator(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, layers_num, vocab_size, embedding_layer):
+    def __init__(self, embedding_dim, hidden_dim, layers_num, vocab_size, embedding_layer, batch_size):
         super(LSTMGenerator, self).__init__()
         self.word_embeddings = embedding_layer
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, layers_num)
+        self.lstm = nn.LSTM(embedding_dim * 2, hidden_dim, layers_num)
         self.hidden2word = nn.Linear(hidden_dim, vocab_size)
 
         self.init_weights()
 
         self.hidden_dim = hidden_dim
         self.layers_num = layers_num
+        self.batch_size = batch_size
 
     def init_weights(self):
         initrange = 0.1
@@ -22,8 +23,9 @@ class LSTMGenerator(nn.Module):
         self.hidden2word.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, input, hidden):
-        emb1, emb2 = self.word_embeddings(input[0]), self.word_embeddings(input[1])
-        emb = torch.cat((emb1, emb2), 0)
+        emb = self.word_embeddings(input)
+        emb = emb.view(-1, self.batch_size, 600)
+
         output, hidden = self.lstm(emb, hidden)
         voc_space = self.hidden2word(output.view(output.size(0) * output.size(1), output.size(2)))
         return voc_space.view(output.size(0), output.size(1), voc_space.size(1)), hidden
