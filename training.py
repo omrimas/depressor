@@ -24,8 +24,8 @@ PAD_TOKEN = 0
 # model params
 EMBEDDING_SIZE = 300
 HIDDEN_SIZE = 128
-LAYERS_NUM = 6
-BATCH_SIZE = 3
+LAYERS_NUM = 4
+BATCH_SIZE = 20
 LEARNING_RATE = 0.0001
 
 
@@ -117,7 +117,7 @@ annoy_index = load_annoy_index()
 
 print("Creating model...")
 embedding_layer = create_embedding_layer(weights_matrix, True)
-model = model.LSTMGenerator(EMBEDDING_SIZE, HIDDEN_SIZE, LAYERS_NUM, voc.num_words, embedding_layer, BATCH_SIZE)
+model = model.LSTMGenerator(EMBEDDING_SIZE, HIDDEN_SIZE, LAYERS_NUM, voc.num_words, embedding_layer)
 if USE_CUDA:
     model.cuda()
 hidden = model.init_hidden(BATCH_SIZE)
@@ -126,9 +126,11 @@ print("Done creating model...")
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-for batch in get_batch():
+for j, batch in enumerate(get_batch()):
+    batch.sort(key=lambda x: len(x.split(" ")), reverse=True)
     indexed_batch = [index_sentence(voc, line) for line in batch]
     indexed_sim_words_batch = [index_close_words(voc, annoy_index, weights_matrix, line) for line in batch]
+    lengths = torch.tensor([len(indexes)-1 for indexes in indexed_batch])
 
     train_inputs, targets = [], []
     for i in range(len(indexed_batch)):
@@ -140,13 +142,13 @@ for batch in get_batch():
     targets = torch.tensor(zero_padding(targets)).view(-1).cuda()
     hidden = repackage_hidden(hidden)
     model.zero_grad()
-    output, hidden = model(train_inputs, hidden)
+    output, hidden = model(train_inputs, hidden, lengths)
     loss = criterion(output.view(-1, voc.num_words), targets)
     loss.backward()
     optimizer.step()
-    if i % 50000 == 0 and i > 0:
+    if j % 1000 == 0 and j > 0:
         print(loss.data.item())
-        model_name = MODEL_DIR + str(i) + "_model.pt"
+        model_name = MODEL_DIR + str(j) + "_model.pt"
         torch.save(model, model_name)
 
 # for i, sentence in enumerate(get_train_sentence()):

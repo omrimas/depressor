@@ -4,12 +4,15 @@ import pickle
 import re
 import unicodedata
 from torch.autograd import Variable
+import random
 
 USE_CUDA = torch.cuda.is_available()
 SRC_FILE = os.path.join("data", "src_file.txt")
-MODEL_CHECKPOINT = "models/2019-03-26T12-20-25/model-LSTM-emsize-50-nhid_128-nlayers_6-batch_size_20-epoch_25.pt"
+MODEL_CHECKPOINT = os.path.join("models", "2019-04-23T18-43-21149000_model.pt")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
+TEMPERATURE = 1
+REPLACE_PROB = 0.3
 
 
 def load_model():
@@ -59,15 +62,28 @@ def repackage_hidden(h):
         return tuple(repackage_hidden(v) for v in h)
 
 
+generated = []
 model = load_model()
+hidden = model.init_hidden(1)
 voc = load_voc()
-with open(SRC_FILE, 'r', encoding="utf8") as f:
+with open(SRC_FILE, 'rb') as f:
     for line in f:
-        words = normalize_string(line).split()
+        words = normalize_string(line.decode("utf-8")).split()
+        generated.append(words[0])
         for i in range(1, len(words)):
             prev_word, cur_word = words[i - 1], words[i]
-            if voc.word2index[prev_word] and voc.word2index[cur_word]:
-                input = torch.tensor([voc.word2index[prev_word], voc.word2index[cur_word]])
-                hidden = repackage_hidden(hidden)
-                output, hidden = model(input, hidden)
-                print("omri")
+            if (prev_word in voc.word2index) and (cur_word in voc.word2index) and \
+                    (random.uniform(0, 1) < REPLACE_PROB):
+                input = torch.tensor([[voc.word2index[prev_word], voc.word2index[cur_word]]]).cuda()
+                output, hidden = model(input, hidden, torch.tensor([1]))
+                word_weights = output.squeeze().data.div(TEMPERATURE).exp().cpu()
+                word_idx = (torch.multinomial(word_weights, 1)[0]).item()
+                # word_idx = output.data.argmax().item()
+                word = voc.index2word[word_idx]
+                generated.append(word)
+            else:
+                generated.append(cur_word)
+
+        hidden = repackage_hidden(hidden)
+
+print(" ".join(generated))
