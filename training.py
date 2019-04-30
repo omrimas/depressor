@@ -15,7 +15,7 @@ VOC_PICKLE = os.path.join("pickles", "voc.pkl")
 TRAIN_FILE = os.path.join("data", "fixed_training")
 VEC_LENGTH = 300
 ANNOY_INDEX_FILE = os.path.join("data", "glove.6B.300d.txt.annoy")
-ANNOY_RESULTS = 10
+ANNOY_RESULTS = 5
 USE_CUDA = torch.cuda.is_available()
 STARTED_DATE_STRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 MODEL_DIR = "models/" + str(STARTED_DATE_STRING)
@@ -27,6 +27,19 @@ HIDDEN_SIZE = 128
 LAYERS_NUM = 4
 BATCH_SIZE = 20
 LEARNING_RATE = 0.0001
+
+# retrain existing model
+CONT_TRAIN_MODEL = True
+MODEL_CHECKPOINT = os.path.join("models", "2019-04-29T01-15-33model.pt")
+
+
+def load_model():
+    model = torch.load(MODEL_CHECKPOINT)
+    if USE_CUDA:
+        model.cuda()
+    else:
+        model.cpu()
+    return model
 
 
 def load_weights_matrix():
@@ -81,9 +94,17 @@ def load_annoy_index():
     return annoy_index
 
 
-def index_close_words(voc, annoy_index, weights_matrix, sentence):
-    return [(annoy_index.get_nns_by_vector(weights_matrix[voc.word2index[w]], ANNOY_RESULTS)[random.randint(0, 9)]) for
-            w in sentence.split()]
+def index_sim_words(voc, annoy_index, weights_matrix, sentence):
+    sim_words = []
+    for w in sentence.split():
+        if w in voc.glove_words:
+            sim_words.append(
+                (annoy_index.get_nns_by_vector(weights_matrix[voc.word2index[w]], ANNOY_RESULTS)[
+                    random.randint(0, ANNOY_RESULTS - 1)]))
+        else:
+            sim_words.append(voc.word2index[w])
+
+    return sim_words
 
 
 def zero_padding(l, fillvalue=PAD_TOKEN):
@@ -116,10 +137,14 @@ weights_matrix = load_weights_matrix()
 annoy_index = load_annoy_index()
 
 print("Creating model...")
-embedding_layer = create_embedding_layer(weights_matrix, True)
-model = model.LSTMGenerator(EMBEDDING_SIZE, HIDDEN_SIZE, LAYERS_NUM, voc.num_words, embedding_layer)
-if USE_CUDA:
-    model.cuda()
+if CONT_TRAIN_MODEL:
+    model = load_model()
+else:
+    embedding_layer = create_embedding_layer(weights_matrix, True)
+    model = model.LSTMGenerator(EMBEDDING_SIZE, HIDDEN_SIZE, LAYERS_NUM, voc.num_words, embedding_layer)
+    if USE_CUDA:
+        model.cuda()
+
 hidden = model.init_hidden(BATCH_SIZE)
 print("Done creating model...")
 
@@ -129,8 +154,8 @@ optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 for j, batch in enumerate(get_batch()):
     batch.sort(key=lambda x: len(x.split(" ")), reverse=True)
     indexed_batch = [index_sentence(voc, line) for line in batch]
-    indexed_sim_words_batch = [index_close_words(voc, annoy_index, weights_matrix, line) for line in batch]
-    lengths = torch.tensor([len(indexes)-1 for indexes in indexed_batch])
+    indexed_sim_words_batch = [index_sim_words(voc, annoy_index, weights_matrix, line) for line in batch]
+    lengths = torch.tensor([len(indexes) - 1 for indexes in indexed_batch])
 
     train_inputs, targets = [], []
     for i in range(len(indexed_batch)):
@@ -146,25 +171,10 @@ for j, batch in enumerate(get_batch()):
     loss = criterion(output.view(-1, voc.num_words), targets)
     loss.backward()
     optimizer.step()
-    if j % 1000 == 0 and j > 0:
+    if j % 10000 == 0 and j > 0:
         print(loss.data.item())
         model_name = MODEL_DIR + str(j) + "_model.pt"
         torch.save(model, model_name)
 
-# for i, sentence in enumerate(get_train_sentence()):
-#     indexed_sentence = index_sentence(voc, sentence)
-#     indexed_close_words = index_close_words(voc, annoy_index, weights_matrix, sentence)
-#     train_inputs, targets = get_train_input(indexed_sentence, indexed_close_words)
-#     hidden = repackage_hidden(hidden)
-#     model.zero_grad()
-#     output, hidden = model(train_inputs, hidden)
-#     loss = criterion(output.view(-1, voc.num_words), targets)
-#     loss.backward()
-#     optimizer.step()
-#     if i % 10000 == 0 and i > 0:
-#         print(loss.data.item())
-#         model_name = MODEL_DIR + str(i) + "_model.pt"
-#         torch.save(model, model_name)
-#
 model_name = MODEL_DIR + "model.pt"
 torch.save(model, model_name)

@@ -23,7 +23,7 @@ def load_glove(voc, weights_matrix):
                 print("Finished %s words" % idx)
             items = line.strip().split()
             word, vec = items[0], [float(x) for x in items[1:]]
-            voc.add_word(word)  # add to vocabulary
+            voc.add_word(word, True)  # add glove word to vocabulary
             weights_matrix[idx + 1] = vec  # add to weights matrix
 
 
@@ -50,11 +50,12 @@ def add_training(voc, weights_matrix):
 def build_annoy(voc, weights_matrix):
     print("build annoy index")
     annoy_obj = annoy.AnnoyIndex(GLOVE_VEC_LEN)
-    for idx, _ in enumerate(voc.word2index):
+    for idx, word in enumerate(voc.word2index):
         if idx % 5000 == 0:
             print("Finished %s words" % idx)
-        annoy_obj.add_item(idx, weights_matrix[idx])
-    annoy_obj.build(10)
+        if word in voc.glove_words:
+            annoy_obj.add_item(idx, weights_matrix[idx])
+    annoy_obj.build(100)
     annoy_obj.save(ANNOY_FILE)
 
 

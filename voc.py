@@ -9,18 +9,21 @@ class Voc:
         self.word2count = {}
         self.index2word = {EOS_TOKEN: "EOS"}
         self.num_words = 1
+        self.glove_words = set()
 
     def add_sentence(self, sentence):
         indexes = [self.add_word(w) for w in sentence.split()]
         indexes.append(EOS_TOKEN)
         return indexes
 
-    def add_word(self, word):
+    def add_word(self, word, is_glove=False):
         if word not in self.word2index:
             self.word2index[word] = self.num_words
             self.index2word[self.num_words] = word
             self.num_words += 1
             self.word2count[word] = 1
+            if is_glove:
+                self.glove_words.add(word)
         else:
             self.word2count[word] += 1
         return self.word2index[word]

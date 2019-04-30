@@ -8,7 +8,7 @@ import random
 
 USE_CUDA = torch.cuda.is_available()
 SRC_FILE = os.path.join("data", "src_file.txt")
-MODEL_CHECKPOINT = os.path.join("models", "2019-04-23T18-43-21149000_model.pt")
+MODEL_CHECKPOINT = os.path.join("models", "2019-04-29T19-07-04model.pt")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
 TEMPERATURE = 1
@@ -72,14 +72,16 @@ with open(SRC_FILE, 'rb') as f:
         generated.append(words[0])
         for i in range(1, len(words)):
             prev_word, cur_word = words[i - 1], words[i]
-            if (prev_word in voc.word2index) and (cur_word in voc.word2index) and \
-                    (random.uniform(0, 1) < REPLACE_PROB):
+            if (prev_word in voc.word2index) and (cur_word in voc.word2index) and (cur_word in voc.glove_words):
                 input = torch.tensor([[voc.word2index[prev_word], voc.word2index[cur_word]]]).cuda()
                 output, hidden = model(input, hidden, torch.tensor([1]))
                 word_weights = output.squeeze().data.div(TEMPERATURE).exp().cpu()
                 word_idx = (torch.multinomial(word_weights, 1)[0]).item()
                 # word_idx = output.data.argmax().item()
-                word = voc.index2word[word_idx]
+                if random.uniform(0, 1) < REPLACE_PROB:
+                    word = "<" + voc.index2word[word_idx] + ">"
+                else:
+                    word = cur_word
                 generated.append(word)
             else:
                 generated.append(cur_word)
