@@ -13,42 +13,39 @@ WORDS_NOT_IN_GLOVE = 88862
 ANNOY_FILE = GLOVE_FILE + ".annoy"
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
+MIN_COUNT_WORDS = 4
 
 
 def load_glove(voc, weights_matrix):
-    print("adding glove words")
     with open(GLOVE_FILE, 'r', encoding="utf8") as f:
         for idx, line in enumerate(f):
             if idx % 50000 == 0:
                 print("Finished %s words" % idx)
             items = line.strip().split()
             word, vec = items[0], [float(x) for x in items[1:]]
-            voc.add_word(word, True)  # add glove word to vocabulary
-            weights_matrix[idx + 1] = vec  # add to weights matrix
+            if word in voc.word2index:
+                voc.glove_words.add(word)
+                weights_matrix[voc.word2index[word]] = vec  # add to weights matrix
 
 
-def add_training(voc, weights_matrix):
-    print("adding train words")
-    not_in_glove = 0
+def add_training(voc):
     with open(TRAIN_FILE, 'r') as f:
         for idx, line in enumerate(f):
             if idx % 50000 == 0:
                 print("Finished %s lines" % idx)
 
-            # add to weights matrix
-            for w in set(line.split()):
-                if w not in voc.word2index:
-                    weights_matrix[GLOVE_VEC_CNT + not_in_glove] = np.random.normal(scale=0.6, size=(300,))
-                    not_in_glove += 1
-
             voc.add_sentence(line)
 
-        print("words not in glove: %d" % not_in_glove)
-        print(weights_matrix)
+
+def complete_weight_mat(voc, weights_matrix):
+    for idx, w in enumerate(voc.word2index):
+        if idx % 5000 == 0:
+            print("Finished %s words" % idx)
+        if w not in voc.glove_words:
+            weights_matrix[voc.word2index[w]] = np.random.normal(scale=0.6, size=(300,))
 
 
 def build_annoy(voc, weights_matrix):
-    print("build annoy index")
     annoy_obj = annoy.AnnoyIndex(GLOVE_VEC_LEN)
     for idx, word in enumerate(voc.word2index):
         if idx % 5000 == 0:
@@ -61,19 +58,37 @@ def build_annoy(voc, weights_matrix):
 
 if __name__ == '__main__':
     vocab = voc.Voc("depression")
-    weights_matrix = np.zeros((GLOVE_VEC_CNT + WORDS_NOT_IN_GLOVE, GLOVE_VEC_LEN))
 
+    print("adding train words to vocabulary...")
+    add_training(vocab)
+    print("Done!")
+    print("%d words in vocabulary" % vocab.num_words)
+
+    print("Trimming words with less than %d occurrences" % MIN_COUNT_WORDS)
+    vocab.trim(MIN_COUNT_WORDS)
+    print("%d words in vocabulary after trimming" % vocab.num_words)
+
+    print("Marking glove words in vocabulary and adding their vectors to weights matrix...")
+    weights_matrix = np.zeros((vocab.num_words, GLOVE_VEC_LEN))
     load_glove(vocab, weights_matrix)
-    add_training(vocab, weights_matrix)
+    print("Done!")
+
+    print("Completing weights matrix for non-glove words...")
+    complete_weight_mat(vocab, weights_matrix)
+    print("Done!")
 
     print("Saving weights matrix")
     f_wm = open(WEIGHTS_MATRIX_PICKLE, "wb")
     pickle.dump(weights_matrix, f_wm, protocol=4)
     f_wm.close()
+    print("Done!")
 
     print("Saving vocabulary")
     f_voc = open(VOC_PICKLE, "wb")
     pickle.dump(vocab, f_voc, protocol=4)
     f_voc.close()
+    print("Done!")
 
+    print("Building annoy index...")
     build_annoy(vocab, weights_matrix)
+    print("Done!")

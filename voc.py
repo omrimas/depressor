@@ -7,13 +7,12 @@ class Voc:
         self.trimmed = False
         self.word2index = {}
         self.word2count = {}
-        self.index2word = {EOS_TOKEN: "EOS"}
-        self.num_words = 1
+        self.index2word = {}
+        self.num_words = 0
         self.glove_words = set()
 
     def add_sentence(self, sentence):
         indexes = [self.add_word(w) for w in sentence.split()]
-        indexes.append(EOS_TOKEN)
         return indexes
 
     def add_word(self, word, is_glove=False):
@@ -47,8 +46,8 @@ class Voc:
         # Reinitialize dictionaries
         self.word2index = {}
         self.word2count = {}
-        self.index2word = {EOS_TOKEN: "EOS"}
-        self.num_words = 1  # Count default tokens
+        self.index2word = {}
+        self.num_words = 0
 
         for word in keep_words:
             self.add_word(word)

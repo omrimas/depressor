@@ -9,10 +9,11 @@ import random
 from torch.autograd import Variable
 from datetime import datetime
 import itertools
+import spacy
 
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
-TRAIN_FILE = os.path.join("data", "fixed_training")
+TRAIN_FILE = os.path.join("data", "fixed_training_trimmed")
 VEC_LENGTH = 300
 ANNOY_INDEX_FILE = os.path.join("data", "glove.6B.300d.txt.annoy")
 ANNOY_RESULTS = 5
@@ -20,17 +21,18 @@ USE_CUDA = torch.cuda.is_available()
 STARTED_DATE_STRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 MODEL_DIR = "models/" + str(STARTED_DATE_STRING)
 PAD_TOKEN = 0
+POS_TO_REPLACE = ["ADV", "ADJ", "NOUN", "VERB"]
 
 # model params
 EMBEDDING_SIZE = 300
 HIDDEN_SIZE = 128
 LAYERS_NUM = 4
-BATCH_SIZE = 20
+BATCH_SIZE = 25
 LEARNING_RATE = 0.0001
 
 # retrain existing model
 CONT_TRAIN_MODEL = True
-MODEL_CHECKPOINT = os.path.join("models", "2019-04-29T01-15-33model.pt")
+MODEL_CHECKPOINT = os.path.join("models", "2019-05-05T01-16-53model.pt")
 
 
 def load_model():
@@ -68,9 +70,9 @@ def get_train_sentence():
     legal = 0
     with open(TRAIN_FILE, 'r') as f:
         for idx, line in enumerate(f):
-            if idx % 500 == 0:
+            if idx % 10000 == 0:
                 print("Finished %s lines, legal: %s" % (idx, legal))
-            if 1 < len(line.split()) < 30:
+            if 1 < len(line.split()) < 20:
                 legal += 1
                 yield line
 
@@ -94,33 +96,41 @@ def load_annoy_index():
     return annoy_index
 
 
-def index_sim_words(voc, annoy_index, weights_matrix, sentence):
+def index_sim_words(voc, annoy_index, weights_matrix, sentence, nlp):
     sim_words = []
-    for w in sentence.split():
-        if w in voc.glove_words:
+    replace_flag = []
+    tokens = nlp(sentence)
+    for w in tokens:
+        if w.is_space:
+            continue
+        if (w.text in voc.glove_words) and (not w.is_stop) and (w.pos_ in POS_TO_REPLACE):
             sim_words.append(
-                (annoy_index.get_nns_by_vector(weights_matrix[voc.word2index[w]], ANNOY_RESULTS)[
+                (annoy_index.get_nns_by_vector(weights_matrix[voc.word2index[w.text]], ANNOY_RESULTS)[
                     random.randint(0, ANNOY_RESULTS - 1)]))
+            replace_flag.append(1)
         else:
-            sim_words.append(voc.word2index[w])
+            sim_words.append(voc.word2index[w.text])
+            replace_flag.append(0)
 
-    return sim_words
+    return sim_words, replace_flag
 
 
 def zero_padding(l, fillvalue=PAD_TOKEN):
     return list(itertools.zip_longest(*l, fillvalue=fillvalue))
 
 
-def get_train_input(indexed_sentence, indexed_close_words):
+def get_train_input(indexed_sentence, indexed_similar_words):
     train_inputs = []
     targets = []
+
+    indexed_sim, replace_flag = indexed_similar_words[0], indexed_similar_words[1]
     for i in range(1, len(indexed_sentence)):
-        train_inputs += [indexed_sentence[i - 1], indexed_close_words[i]]
+        train_inputs += [indexed_sentence[i - 1], indexed_sim[i]]
         targets.append(indexed_sentence[i])
 
     # train_inputs = torch.tensor(train_inputs).cuda() if USE_CUDA else torch.tensor(train_inputs)
     # targets = torch.tensor(targets).cuda() if USE_CUDA else torch.tensor(targets)
-    return train_inputs, targets
+    return train_inputs, replace_flag[1:], targets
 
 
 def repackage_hidden(h):
@@ -131,10 +141,12 @@ def repackage_hidden(h):
         return tuple(repackage_hidden(v) for v in h)
 
 
+torch.cuda.empty_cache()
 device = torch.device("cuda" if USE_CUDA else "cpu")
 voc = load_voc()
 weights_matrix = load_weights_matrix()
 annoy_index = load_annoy_index()
+nlp = spacy.load('en_core_web_md')
 
 print("Creating model...")
 if CONT_TRAIN_MODEL:
@@ -154,20 +166,23 @@ optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 for j, batch in enumerate(get_batch()):
     batch.sort(key=lambda x: len(x.split(" ")), reverse=True)
     indexed_batch = [index_sentence(voc, line) for line in batch]
-    indexed_sim_words_batch = [index_sim_words(voc, annoy_index, weights_matrix, line) for line in batch]
+    indexed_sim_words_batch = [index_sim_words(voc, annoy_index, weights_matrix, line, nlp) for line in
+                               batch]
     lengths = torch.tensor([len(indexes) - 1 for indexes in indexed_batch])
 
-    train_inputs, targets = [], []
+    train_inputs, replace_flags, targets = [], [], []
     for i in range(len(indexed_batch)):
-        cur_inputs, cur_targets = get_train_input(indexed_batch[i], indexed_sim_words_batch[i])
+        cur_inputs, cur_replace_flags, cur_targets = get_train_input(indexed_batch[i], indexed_sim_words_batch[i])
         train_inputs.append(cur_inputs)
+        replace_flags.append(cur_replace_flags)
         targets.append(cur_targets)
 
     train_inputs = torch.LongTensor(zero_padding(train_inputs)).t().cuda()
+    replace_flags = torch.FloatTensor(zero_padding(replace_flags)).view(-1, 1).cuda()
     targets = torch.tensor(zero_padding(targets)).view(-1).cuda()
     hidden = repackage_hidden(hidden)
     model.zero_grad()
-    output, hidden = model(train_inputs, hidden, lengths)
+    output, hidden = model(train_inputs, hidden, lengths, replace_flags)
     loss = criterion(output.view(-1, voc.num_words), targets)
     loss.backward()
     optimizer.step()

@@ -7,7 +7,7 @@ class LSTMGenerator(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, layers_num, vocab_size, embedding_layer):
         super(LSTMGenerator, self).__init__()
         self.word_embeddings = embedding_layer
-        self.lstm = nn.LSTM(embedding_dim * 2, hidden_dim, layers_num)
+        self.lstm = nn.LSTM(embedding_dim * 2 + 1, hidden_dim, layers_num)
         self.hidden2word = nn.Linear(hidden_dim, vocab_size)
 
         self.init_weights()
@@ -21,9 +21,11 @@ class LSTMGenerator(nn.Module):
         self.hidden2word.bias.data.fill_(0)
         self.hidden2word.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, hidden, input_lengths):
+    def forward(self, input, hidden, input_lengths, replace_flags):
         emb = self.word_embeddings(input)
-        emb = emb.view(-1, emb.size(0), 600)
+        emb = emb.view(-1, 600)
+        emb = torch.cat((emb, replace_flags), dim=1)
+        emb = emb.view(-1, input.size(0), 601)
         packed = nn.utils.rnn.pack_padded_sequence(emb, input_lengths)
 
         output, hidden = self.lstm(packed, hidden)
