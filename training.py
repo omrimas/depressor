@@ -27,12 +27,12 @@ POS_TO_REPLACE = ["ADV", "ADJ", "NOUN", "VERB"]
 EMBEDDING_SIZE = 300
 HIDDEN_SIZE = 128
 LAYERS_NUM = 4
-BATCH_SIZE = 25
+BATCH_SIZE = 30
 LEARNING_RATE = 0.0001
 
 # retrain existing model
 CONT_TRAIN_MODEL = True
-MODEL_CHECKPOINT = os.path.join("models", "2019-05-05T01-16-53model.pt")
+MODEL_CHECKPOINT = os.path.join("models", "2019-05-05T14-26-12model.pt")
 
 
 def load_model():
