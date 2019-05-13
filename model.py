@@ -17,7 +17,7 @@ class LSTMGenerator(nn.Module):
 
     def init_weights(self):
         initrange = 0.1
-        self.word_embeddings.weight.data.uniform_(-initrange, initrange)
+        # self.word_embeddings.weight.data.uniform_(-initrange, initrange)
         self.hidden2word.bias.data.fill_(0)
         self.hidden2word.weight.data.uniform_(-initrange, initrange)
 
