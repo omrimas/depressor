@@ -178,8 +178,8 @@ for j, batch in enumerate(get_batch()):
         targets.append(cur_targets)
 
     train_inputs = torch.LongTensor(zero_padding(train_inputs)).t().cuda()
-    replace_flags = torch.FloatTensor(zero_padding(replace_flags)).view(-1, 1).cuda()
-    targets = torch.tensor(zero_padding(targets)).view(-1).cuda()
+    replace_flags = torch.FloatTensor(zero_padding(replace_flags)).t().contiguous().view(-1, 1).cuda()
+    targets = torch.tensor(zero_padding(targets)).t().contiguous().view(-1).cuda()
     hidden = repackage_hidden(hidden)
     model.zero_grad()
     output, hidden = model(train_inputs, hidden, lengths, replace_flags)
