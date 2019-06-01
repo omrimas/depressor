@@ -10,6 +10,7 @@ from torch.autograd import Variable
 from datetime import datetime
 import itertools
 import spacy
+from tensorboardX import SummaryWriter
 
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
@@ -25,14 +26,15 @@ POS_TO_REPLACE = ["ADV", "ADJ", "NOUN", "VERB"]
 
 # model params
 EMBEDDING_SIZE = 300
-HIDDEN_SIZE = 128
-LAYERS_NUM = 4
+HIDDEN_SIZE = 256
+LAYERS_NUM = 2
 BATCH_SIZE = 30
 LEARNING_RATE = 0.0001
 
 # retrain existing model
 CONT_TRAIN_MODEL = True
-MODEL_CHECKPOINT = os.path.join("models", "2019-05-05T14-26-12model.pt")
+MODEL_CHECKPOINT = os.path.join("models", "2019-05-26T19-29-15model.pt")
+LOG_INTERVAL = 30
 
 
 def load_model():
@@ -58,8 +60,9 @@ def load_voc():
 
 def create_embedding_layer(weights_matrix, non_trainable=False):
     num_embeddings, embedding_dim = weights_matrix.shape
-    emb_layer = nn.Embedding(num_embeddings, embedding_dim)
+    emb_layer = nn.Embedding(num_embeddings, embedding_dim, padding_idx=0)
     emb_layer.load_state_dict({'weight': torch.tensor(weights_matrix)})
+    emb_layer.weight.data[0] = 0
     if non_trainable:
         emb_layer.weight.requires_grad = False
 
@@ -143,16 +146,21 @@ def repackage_hidden(h):
 
 torch.cuda.empty_cache()
 device = torch.device("cuda" if USE_CUDA else "cpu")
+writer = SummaryWriter()
+
 voc = load_voc()
 weights_matrix = load_weights_matrix()
 annoy_index = load_annoy_index()
 nlp = spacy.load('en_core_web_md')
 
+# labels = [w for w in voc.word2index]
+# writer.add_embedding(weights_matrix, metadata=labels, tag="before")
+
 print("Creating model...")
 if CONT_TRAIN_MODEL:
     model = load_model()
 else:
-    embedding_layer = create_embedding_layer(weights_matrix, True)
+    embedding_layer = create_embedding_layer(weights_matrix)
     model = model.LSTMGenerator(EMBEDDING_SIZE, HIDDEN_SIZE, LAYERS_NUM, voc.num_words, embedding_layer)
     if USE_CUDA:
         model.cuda()
@@ -160,9 +168,9 @@ else:
 hidden = model.init_hidden(BATCH_SIZE)
 print("Done creating model...")
 
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(ignore_index=0)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
+acc_loss = 0
 for j, batch in enumerate(get_batch()):
     batch.sort(key=lambda x: len(x.split(" ")), reverse=True)
     indexed_batch = [index_sentence(voc, line) for line in batch]
@@ -184,12 +192,24 @@ for j, batch in enumerate(get_batch()):
     model.zero_grad()
     output, hidden = model(train_inputs, hidden, lengths, replace_flags)
     loss = criterion(output.view(-1, voc.num_words), targets)
+    acc_loss += loss.data.item()
+
     loss.backward()
     optimizer.step()
-    if j % 10000 == 0 and j > 0:
-        print(loss.data.item())
-        model_name = MODEL_DIR + str(j) + "_model.pt"
+
+    # logging
+    if j % LOG_INTERVAL == 0 and j > 0:
+        avg_loss = acc_loss / LOG_INTERVAL
+        writer.add_scalar('data/loss', avg_loss, j)
+        acc_loss = 0
+
+    if j % 5000 == 0 and j > 0:
+        model_name = MODEL_DIR + str(j) + "_nmodel.pt"
         torch.save(model, model_name)
+
+# writer.add_embedding(model.word_embeddings.weight.data, metadata=labels, tag="after")
+writer.export_scalars_to_json("./all_scalars.json")
+writer.close()
 
 model_name = MODEL_DIR + "model.pt"
 torch.save(model, model_name)
