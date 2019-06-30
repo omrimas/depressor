@@ -8,13 +8,13 @@ import random
 import spacy
 
 USE_CUDA = torch.cuda.is_available()
-SRC_FILE = os.path.join("data", "Trump_2016-11-09.txt")
-MODEL_CHECKPOINT = os.path.join("models", "2019-06-16T11-29-09model.pt")
+SRC_FILE = os.path.join("data", "src_file.txt")
+MODEL_CHECKPOINT = os.path.join("models", "2019-05-18T13-31-1920000_nmodel.pt")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
-TEMPERATURE = 1.5
+TEMPERATURE = 1
 REPLACE_PROB = 0.5
-POS_TO_REPLACE = ["ADV", "ADJ"]
+POS_TO_REPLACE = ["ADV", "ADJ", "NOUN", "VERB"]
 nlp = spacy.load('en_core_web_md')
 
 
@@ -49,7 +49,6 @@ def unicode_to_ascii(s):
 # Lowercase, trim, and remove non-letter characters
 def normalize_string(s):
     s = unicode_to_ascii(s.lower().strip())
-    s = re.sub(r"\<.*?\>", " ", s)
     s = re.sub(r'^https?:\/\/.*[\r\n]*', '', s, flags=re.MULTILINE)  # remove links
     s = re.sub(r"([.!?])", r" \1", s)
     s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
@@ -71,38 +70,40 @@ hidden = model.init_hidden(1)
 voc = load_voc()
 with open(SRC_FILE, 'rb') as f:
     for line in f:
-        normalized = normalize_string(line.decode("utf-8"))
-        if not normalized:
-            continue
-        print(normalized)
-        tokens = nlp(normalized)
+        tokens = nlp(normalize_string(line.decode("utf-8")))
         generated.append(tokens[0].text)
+
+        prev_word = tokens[0].text
         for i in range(1, len(tokens)):
-            prev_token, cur_token = tokens[i - 1], tokens[i]
+            cur_token = tokens[i]
 
             # check if we can feed it to our network - both words should be in vocabulary
-            if (prev_token.text in voc.word2index) and (cur_token.text in voc.word2index):
+            if (prev_word in voc.word2index) and (cur_token.text in voc.word2index):
 
                 # replace flag should be set to
-                replace_flag = 0
-                if (cur_token.pos_ in POS_TO_REPLACE) and (not cur_token.is_stop):
-                    replace_flag = 1
+                # replace_flag = 0
+                # if cur_token.pos_ in POS_TO_REPLACE:
+                #     replace_flag = 1
 
-                input = torch.tensor([[voc.word2index[prev_token.text], voc.word2index[cur_token.text]]]).cuda()
+                replace_flag = 1
+
+                input = torch.tensor([[voc.word2index[prev_word], voc.word2index[cur_token.text]]]).cuda()
                 output, hidden = model(input, hidden, torch.tensor([1]), torch.FloatTensor([[replace_flag]]).cuda())
-                # word_weights = output.squeeze().data.div(TEMPERATURE).exp().cpu()
+                word_weights = output.squeeze().data.div(TEMPERATURE).exp().cpu()
                 # word_idx = (torch.multinomial(word_weights, 1)[0]).item()
                 word_idx = output.data.argmax().item()
 
                 output_word = voc.index2word[word_idx]
                 rand = random.uniform(0, 1)
-                # replace_word = (replace_flag == 1) and (rand < REPLACE_PROB) and (len(output_word) > 1)z`
+                # replace_word = (replace_flag == 1) and (rand < REPLACE_PROB) and (len(output_word) > 1)
                 # replace_word = (replace_flag == 1) and (rand < REPLACE_PROB)
-                replace_word = (cur_token.pos_ in POS_TO_REPLACE) and \
-                               (not cur_token.is_stop)
-                word = "<" + output_word + ">" if replace_word else cur_token.text
+                # replace_word = (rand < REPLACE_PROB)
+                replace_word = True
+                prev_word = output_word
+                word = "<" + output_word + ">" + cur_token.text if replace_word else cur_token.text
 
                 generated.append(word)
+
 
             else:
                 # previous or current word is not in vocabulary - just add token, and reset hidden
@@ -111,4 +112,4 @@ with open(SRC_FILE, 'rb') as f:
 
         hidden = repackage_hidden(hidden)
 
-print(" ".join(generated))
+print("   ".join(generated))

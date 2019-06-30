@@ -5,10 +5,10 @@ class Voc:
     def __init__(self, name):
         self.name = name
         self.trimmed = False
-        self.word2index = {}
+        self.word2index = {'<PAD>': 0}
         self.word2count = {}
-        self.index2word = {}
-        self.num_words = 0
+        self.index2word = {0: '<PAD>'}
+        self.num_words = 1
         self.glove_words = set()
 
     def add_sentence(self, sentence):
@@ -44,10 +44,10 @@ class Voc:
         ))
 
         # Reinitialize dictionaries
-        self.word2index = {}
+        self.word2index = {'<PAD>': 0}
         self.word2count = {}
-        self.index2word = {}
-        self.num_words = 0
+        self.index2word = {0: '<PAD>'}
+        self.num_words = 1
 
         for word in keep_words:
             self.add_word(word)

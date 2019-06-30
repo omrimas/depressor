@@ -41,8 +41,12 @@ def complete_weight_mat(voc, weights_matrix):
     for idx, w in enumerate(voc.word2index):
         if idx % 5000 == 0:
             print("Finished %s words" % idx)
-        if w not in voc.glove_words:
-            weights_matrix[voc.word2index[w]] = np.random.normal(scale=0.6, size=(300,))
+
+        if w == '<PAD>':
+            weights_matrix[voc.word2index[w]] = np.zeros(shape=(300,))
+        else:
+            if w not in voc.glove_words:
+                weights_matrix[voc.word2index[w]] = np.random.normal(scale=0.6, size=(300,))
 
 
 def build_annoy(voc, weights_matrix):
@@ -51,6 +55,8 @@ def build_annoy(voc, weights_matrix):
         if idx % 5000 == 0:
             print("Finished %s words" % idx)
         if word in voc.glove_words:
+            if word == '<PAD>':
+                continue
             annoy_obj.add_item(idx, weights_matrix[idx])
     annoy_obj.build(100)
     annoy_obj.save(ANNOY_FILE)

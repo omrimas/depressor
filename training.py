@@ -14,7 +14,7 @@ from tensorboardX import SummaryWriter
 
 WEIGHTS_MATRIX_PICKLE = os.path.join("pickles", "weights.matrix.pkl")
 VOC_PICKLE = os.path.join("pickles", "voc.pkl")
-TRAIN_FILE = os.path.join("data", "fixed_training_trimmed")
+TRAIN_FILE = os.path.join("data", "fixed_training_trimmed_filtered_sadness")
 VEC_LENGTH = 300
 ANNOY_INDEX_FILE = os.path.join("data", "glove.6B.300d.txt.annoy")
 ANNOY_RESULTS = 5
@@ -28,12 +28,12 @@ POS_TO_REPLACE = ["ADV", "ADJ", "NOUN", "VERB"]
 EMBEDDING_SIZE = 300
 HIDDEN_SIZE = 256
 LAYERS_NUM = 2
-BATCH_SIZE = 30
+BATCH_SIZE = 20
 LEARNING_RATE = 0.0001
 
 # retrain existing model
 CONT_TRAIN_MODEL = True
-MODEL_CHECKPOINT = os.path.join("models", "2019-05-26T19-29-15model.pt")
+MODEL_CHECKPOINT = os.path.join("models", "2019-06-15T18-01-20model.pt")
 LOG_INTERVAL = 30
 
 
@@ -75,7 +75,7 @@ def get_train_sentence():
         for idx, line in enumerate(f):
             if idx % 10000 == 0:
                 print("Finished %s lines, legal: %s" % (idx, legal))
-            if 1 < len(line.split()) < 20:
+            if 1 < len(line.split()) < 50:
                 legal += 1
                 yield line
 
@@ -203,9 +203,9 @@ for j, batch in enumerate(get_batch()):
         writer.add_scalar('data/loss', avg_loss, j)
         acc_loss = 0
 
-    if j % 5000 == 0 and j > 0:
-        model_name = MODEL_DIR + str(j) + "_nmodel.pt"
-        torch.save(model, model_name)
+    # if j % 5000 == 0 and j > 0:
+    #     model_name = MODEL_DIR + str(j) + "_nmodel.pt"
+    #     torch.save(model, model_name)
 
 # writer.add_embedding(model.word_embeddings.weight.data, metadata=labels, tag="after")
 writer.export_scalars_to_json("./all_scalars.json")
